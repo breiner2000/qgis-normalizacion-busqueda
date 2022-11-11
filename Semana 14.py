@@ -1,10 +1,12 @@
+import psycopg2
 #Define de no existir un listado con las referencias de las capas vectoriales para no perder sus referencias
+
 if not "vlayers" in locals():
     vlayers=[]
 
 #Define las constantes de conexión a base de datos
 if not "db" in locals():
-    db={"servidor":"leoviquez.com","puerto":"5432","baseDatos":"curso_gis","usuario":"gis","clave":"gis"}
+    db={"servidor":"localhost","puerto":"5432","baseDatos":"qgis_proyecto","usuario":"postgres","clave":"7201"}
 
 #Define el listado de acciones por agregar a la barra de herramientas
 if not "acciones" in locals():
@@ -69,64 +71,68 @@ def listar_geometrias_seleccionadas():
     canvas = qgis.utils.iface.mapCanvas()
     canvas.currentLayer().selectAll()
     cLayer = canvas.currentLayer()
-    print (cLayer.crs().authid())
+
+    connection = psycopg2.connect(user="postgres",
+                                password="7201",
+                                host="localhost",
+                                port="5432",
+                                database="qgis_proyecto")
+    cursor = connection.cursor()
+
     selectList = []
     if cLayer:
         count = cLayer.selectedFeatureCount()
-        print (count)
         selectedList = cLayer.selectedFeatures()
-        print (selectedList)
         for f in selectedList:
-            print (f.geometry().asJson())
-            #print (f.geometry().area())
+            geometria = f.geometry().asWkt()
+            radio = f.attributes()[1] /2
+
+
+            sql = """select geom from (select (ST_DumpPoints(geom)).geom FROM rutas_buses) as rb, 
+                        (select st_buffer( ST_GeomFromText(%s, 5367) , %s)) as points 
+                            where st_contains (points.st_buffer, rb.geom)"""
+            
+            data = (geometria, radio, )
+            cursor.execute(sql, data)
+            result = cursor.fetchall()
+            print(result)
+
+            
     for i in canvas.layers():
         if i.type() == i.VectorLayer:
             i.removeSelection()
-
-def mostrarRutaLabTocomedor():
-    uri = QgsDataSourceUri()
-    uri.setConnection("leoviquez.com", "5432", "curso_gis", "gis", "gis")
-    sql = """SELECT * FROM pgr_dijkstra(
-      'SELECT id,source, target, distancia as cost FROM routing.aceras_completo',
-      328, 359, directed => false) as r inner join routing.aceras_completo as a on (r.edge=a.id)"""
-    uri.setDataSource("", "("+sql+")", "geom",  "", "id")
-    vRuteo= QgsVectorLayer(uri.uri(False), "testlayer", "postgres")
-    QgsProject.instance().addMapLayer(vRuteo)
-
+    
+    print(selectedList)
 
     
+
+# def mostrarRutaLabTocomedor():
+#     uri = QgsDataSourceUri()
+#     uri.setConnection("leoviquez.com", "5432", "curso_gis", "gis", "gis")
+#     sql = """SELECT * FROM pgr_dijkstra(
+#       'SELECT id,source, target, distancia as cost FROM routing.aceras_completo',
+#       328, 359, directed => false) as r inner join routing.aceras_completo as a on (r.edge=a.id)"""
+#     uri.setDataSource("", "("+sql+")", "geom",  "", "id")
+#     vRuteo= QgsVectorLayer(uri.uri(False), "testlayer", "postgres")
+#     QgsProject.instance().addMapLayer(vRuteo)
+
+
 #Ruta del proyecto actual
 direccionProyecto=QgsProject.instance().readPath("./");
 
 acciones["capaRutas"] = QAction(QIcon(direccionProyecto+"/autobus.png"),'Cargar rutas de buses')
-acciones["capaRutas"].triggered.connect(lambda: cargarCapaPostgres(db["servidor"],db["puerto"],db["baseDatos"],db["usuario"],db["clave"],"routing","rutas_buses","geom"))
+acciones["capaRutas"].triggered.connect(lambda: cargarCapaPostgres(db["servidor"],db["puerto"],db["baseDatos"],db["usuario"],db["clave"],"public","rutas_buses","geom"))
 
-acciones["aceras"] = QAction(QIcon(direccionProyecto+"/acera.png"),'Cargar aceras del TEC')
-acciones["aceras"].triggered.connect(lambda: cargarCapaPostgres(db["servidor"],db["puerto"],db["baseDatos"],db["usuario"],db["clave"],"routing","aceras_completo","geom"))
-
-acciones["nodos"] = QAction(QIcon(direccionProyecto+"/nodos.png"),'Cargar nodos de enrutamiento de las aceras TEC')
-acciones["nodos"].triggered.connect(lambda: cargarCapaPostgres(db["servidor"],db["puerto"],db["baseDatos"],db["usuario"],db["clave"],"routing","aceras_completo_vertices_pgr","the_geom"))
-
-acciones["normalizar"] = QAction(QIcon(direccionProyecto+"/punto.png"),'Cargar aceras del TEC')
+acciones["normalizar"] = QAction(QIcon(direccionProyecto+"/punto.png"),'Normalizar')
 acciones["normalizar"].triggered.connect(normalizarRutas)
 
 acciones["Listar elementos seleccionados"] = QAction(QIcon(direccionProyecto+"/json.png"),'Listar elementos seleccionados')
 acciones["Listar elementos seleccionados"].triggered.connect(listar_geometrias_seleccionadas)
 
-acciones["rutaComedor"] = QAction('Ruta al comedor')
-acciones["rutaComedor"].triggered.connect(mostrarRutaLabTocomedor)
 
 #Agregar elementos a la barra de herramientas 
 iface.addToolBarIcon(acciones["capaRutas"])
-iface.addToolBarIcon(acciones["aceras"])
-iface.addToolBarIcon(acciones["nodos"])
 iface.addToolBarIcon(acciones["normalizar"])
 iface.addToolBarIcon(acciones["Listar elementos seleccionados"])
-iface.addToolBarIcon(acciones["rutaComedor"])
-
-
-
-
-
 
 
