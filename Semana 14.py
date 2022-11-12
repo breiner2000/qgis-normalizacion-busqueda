@@ -71,6 +71,12 @@ def listar_geometrias_seleccionadas():
     canvas = qgis.utils.iface.mapCanvas()
     canvas.currentLayer().selectAll()
     cLayer = canvas.currentLayer()
+    
+    # abrir capa de rutas_buses
+    global vlayers
+    vRutas = vlayers[0]["capa"]
+    #vRutas.startEditing()
+    
 
     connection = psycopg2.connect(user="postgres",
                                 password="7201",
@@ -87,22 +93,30 @@ def listar_geometrias_seleccionadas():
             geometria = f.geometry().asWkt()
             radio = f.attributes()[1] /2
 
-
-            sql = """select geom from (select (ST_DumpPoints(geom)).geom FROM rutas_buses) as rb, 
+            # idRuta, geomPunto, pathPunto
+            sql = """select id, st_astext(geom), path from (select (ST_DumpPoints(geom)).geom, (ST_DumpPoints(geom)).path, id  FROM rutas_buses) as rb, 
                         (select st_buffer( ST_GeomFromText(%s, 5367) , %s)) as points 
                             where st_contains (points.st_buffer, rb.geom)"""
             
             data = (geometria, radio, )
             cursor.execute(sql, data)
             result = cursor.fetchall()
+            #info de los vertices contenidos
             print(result)
-
             
+            xPoint =  f.geometry().asPoint().x() 
+            yPoint = f.geometry().asPoint().y()
+
+            # hacer pero con los vertices de vRutas
+            for i in result: 
+                geom =  QgsGeometry.fromWkt(i[1])
+                vIndex = i[2][1]
+                geom.moveVertex(xPoint, yPoint, vIndex)
+
     for i in canvas.layers():
         if i.type() == i.VectorLayer:
             i.removeSelection()
     
-    print(selectedList)
 
     
 
